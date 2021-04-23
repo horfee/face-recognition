@@ -3,10 +3,12 @@ from os.path import isfile, join, splitext
 import sys
 from pymongo import MongoClient
 import os
+import bson
+from bson.json_util import dumps
 import urllib.parse
-
+import uuid
 import face_recognition
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import BadRequest
 
@@ -81,25 +83,26 @@ def detect_faces_in_image(file_stream):
     faces_found = len(uploaded_faces)
     faces = []
 
-
     if faces_found:
-        persons = get_persons()
-        for person in persons:
-            face_encodings = list(person['encodings'])
+        # persons = get_persons()
+        # for person in persons:
+            # face_encodings = list(person['encodings'])
+        persons = list(get_persons())
+        face_encodings = list(map(lambda encoding: encoding['encodings'], persons))
 
-            for uploaded_face in uploaded_faces:
-                match_results = face_recognition.compare_faces(face_encodings, uploaded_face)
-                for idx, match in enumerate(match_results):
-                    if match:
-                        match = person['name']
-                        match_encoding = face_encodings[idx]
-                        dist = face_recognition.face_distance([match_encoding],
-                                uploaded_face)[0]
-                        faces.append({
-                            "id": match,
-                            "dist": dist,
-                            "location": face_locations[idx]
-                        })
+        for uploaded_face in uploaded_faces:
+            match_results = face_recognition.compare_faces(face_encodings, uploaded_face)
+            for idx, match in enumerate(match_results):
+                if match:
+                    match = persons[idx]['name']
+                    match_encoding = face_encodings[idx]
+                    dist = face_recognition.face_distance([match_encoding],
+                            uploaded_face)[0]
+                    faces.append({
+                        "id": match,
+                        "dist": dist,
+                        "location": face_locations[idx]
+                    })
 
     return {
         "count": len(faces),
@@ -110,41 +113,47 @@ def detect_faces_in_image(file_stream):
 
 # <DAO> #
 def get_person(id):
-    return db.persons.find_one({'name': id})
+    return db.encodings.find({'name': id},{'image': 0})
+#    return db.persons.find_one({'name': id})
+
+def get_images_for_person(id):
+    return db.encodings.find({'name': id}, {'image': 1, '_id': 1})
 
 def get_persons():
-    return db.persons.find()
+    return db.encodings.find({}, {'image': 0})
+#    return db.persons.find()
 
 def get_persons_names():
-    return list(map(lambda person: person['name'] ,get_persons()))
+    return db.encodings.distinct('name')
+#    return list(map(lambda person: person['name'] ,get_persons()))
 
-def addEncodings(id, encodings = None):
-    if id in get_persons_names():
-        person = get_person(id)
-        if  encodings is not None:
-            person['encodings'].append(encodings.tolist())
-            db.persons.find_one_and_update( 
-                { "_id" : ObjectId(person._id)},
-                {
-                    '$set': {
-                        'encodings': person['encodings']
-                    }
-                })
-        return get_person(id)
-    else:
-        person = { 'name': id, 'encodings': []}
-        if encodings is not None:
-            person['encodings'].append(encodings.tolist())
+def addEncodings(id, file_image):
+    if file_image is not None:
+        new_encoding = calc_face_encoding(file_image)
 
-        db.persons.insert_one(person)
-        return get_person(id)
+        return str(db.encodings.insert_one({ 'name': id, 'encodings': new_encoding.tolist(), 'image': file_image.filename}).inserted_id)
+
+def getImageForEncoding(encodingId):
+    return db.encodings.find_one({'_id': encodingId}, {'image':1})['image']
 
 def clearEncodings(id):
-    removePerson(id)
-    addEncodings(id)
+    db.encodings.delete_many({ 'name': id})
+    # removePerson(id)
+    # addEncodings(id)
 
 def removePerson(id):
-    db.persons.remove({'name':id})
+    clearEncodings(id)
+    # db.persons.remove({'name':id})
+
+def get_filename_for_encoding(id):
+    encoding = db.encodings.find_one(bson.ObjectId(id))
+    if encoding is not None:
+        return encoding['image']
+
+    return None
+
+def delete_encoding(id):
+    db.encodings.delete_one({ '_id': bson.ObjectId(id)})
 
 # <Controller>
 
@@ -165,9 +174,40 @@ def web_facelocation():
     file = extract_image(request)
     return jsonify(detect_faces_locations_in_image(file))
 
+
+@app.route('/image', methods=['GET'])
+def web_get_image():
+    if 'id' not in request.args:
+        raise BadRequest("Identifier for the file was not given!")
+
+    filename = get_filename_for_encoding(request.args.get('id'))
+    if filename is not None:
+        app.logger.info('Sending file %f from /root/faces/', filename)
+        #return '/root/faces/{0}'.format(filename)
+        return send_from_directory('/root/faces/', filename)
+    return ''
+
+@app.route('/encodings', methods=['GET'])
+def web_get_encodings():
+    if 'id' not in request.args:
+        raise BadRequest("Identifier for the face was not given!")
+
+    #, 'file': enc['image']
+    return jsonify( list( map(lambda enc : {'id': str(enc['_id'])} ,get_images_for_person(request.args.get('id')) ) ))
+
+@app.route('/encodings', methods=['DELETE'])
+def web_delete_encodings():
+    if 'id' not in request.args:
+        raise BadRequest("Identifier for the face was not given!")
+
+    #, 'file': enc['image']
+    delete_encoding( request.args.get('id') )
+    return 'done'
+
+
 @app.route('/faces', methods=['GET'])
 def web_get_faces():
-    return jsonify(get_persons_names())
+    return jsonify(list(get_persons_names()))
 
 @app.route('/faces', methods=['POST'])
 def web_faces():
@@ -182,8 +222,8 @@ def web_faces():
         # TODO add method for extension persistence - do not forget abut the deletion
         #file.save("{0}/{1}.jpg".format(persistent_faces, request.args.get('id')))
         try:
-            new_encoding = calc_face_encoding(file)
-            addEncodings(request.args.get('id'), new_encoding)
+            file.save(os.path.join("/root/faces",file.filename))
+            return addEncodings(request.args.get('id'), file)
         except Exception as exception:
             raise BadRequest(exception)
 
@@ -222,7 +262,7 @@ if __name__ == "__main__":
     dbpassword = urllib.parse.quote_plus(os.getenv('MONGO_INITDB_ROOT_PASSWORD'))
 
     URI="mongodb://%s:%s@%s:%d" % (dbuser, dbpassword, dbhostname,dbport)
-    client = MongoClient(URI);
+    client = MongoClient(URI)
 
     db = client[dbname]
 
