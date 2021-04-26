@@ -23,8 +23,8 @@ export declare class FaceImage extends LitElement {
         left: number;
     }[];
     static styles: import("lit-element").CSSResult;
-    ratioX: number;
-    ratioY: number;
+    private ratioX;
+    private ratioY;
     render(): import("lit-element").TemplateResult;
     updated(_changedProperties: PropertyValues): void;
     imageCmp: HTMLImageElement;

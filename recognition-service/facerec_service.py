@@ -90,7 +90,7 @@ def detect_faces_in_image(file_stream):
         persons = list(get_persons())
         face_encodings = list(map(lambda encoding: encoding['encodings'], persons))
 
-        for uploaded_face in uploaded_faces:
+        for i, uploaded_face in enumerate(uploaded_faces):
             match_results = face_recognition.compare_faces(face_encodings, uploaded_face)
             for idx, match in enumerate(match_results):
                 if match:
@@ -101,13 +101,10 @@ def detect_faces_in_image(file_stream):
                     faces.append({
                         "id": match,
                         "dist": dist,
-                        "location": face_locations[idx]
+                        "location": face_locations[i]
                     })
 
-    return {
-        "count": len(faces),
-        "faces": faces
-    }
+    return faces
 
 # <Picture functions> #
 
@@ -133,10 +130,20 @@ def addEncodings(id, file_image):
 
         return str(db.encodings.insert_one({ 'name': id, 'encodings': new_encoding.tolist(), 'image': file_image.filename}).inserted_id)
 
+def delete_image_file(image_file):
+    file = os.path.join("/root/faces", image_file)
+
+    if os.path.exists(file):
+        os.remove(file)
+
 def getImageForEncoding(encodingId):
     return db.encodings.find_one({'_id': encodingId}, {'image':1})['image']
 
 def clearEncodings(id):
+    images = db.encodings.find({'name': id}, {'image': 1})
+    for image in images:
+        delete_image_file(image['image'])
+
     db.encodings.delete_many({ 'name': id})
     # removePerson(id)
     # addEncodings(id)
@@ -153,6 +160,10 @@ def get_filename_for_encoding(id):
     return None
 
 def delete_encoding(id):
+    enc = db.encodings.find_one({ '_id': bson.ObjectId(id)})
+    if enc is not None:
+        delete_image_file(enc['image'])
+
     db.encodings.delete_one({ '_id': bson.ObjectId(id)})
 
 # <Controller>

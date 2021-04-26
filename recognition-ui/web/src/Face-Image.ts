@@ -63,7 +63,6 @@ import 'mil-pulse-spinner';
       position: absolute;
       width: 25px;
       height: 25px;
-      background: black;
       cursor: pointer;
     }
 
@@ -72,7 +71,7 @@ import 'mil-pulse-spinner';
       --height: 100px;
       position: absolute;
       width: 100%;
-      height: 100%;
+      height: 100px;
       margin-top: calc(50% - 50px);
     }
 
@@ -83,13 +82,13 @@ import 'mil-pulse-spinner';
 
 
 @internalProperty()
-ratioX = 0; 
+private ratioX = 0; 
 
 @internalProperty()
-ratioY = 0;
+private ratioY = 0;
 
   render() {
-    const deleteButton = html`<img class="delete" style="top: 0px; right: 0px;" src="delete.png" @click="${ () => this.remove()}"/>`;
+    const deleteButton = html`<img class="delete" style="top: 0px; right: 0px;" src="images/delete.png" @click="${ () => this.remove()}"/>`;
     const processing = html`<mil-pulse-spinner></mil-pulse-spinner>`;
 
     if ( this.box === undefined ) return html`
@@ -100,8 +99,8 @@ ratioY = 0;
     ${deleteButton}
     ${this.box.map( (box,index) => html`
       <div class="face">
-        <img class="delete" src="delete" style="left:${this.ratioX * box.right - 12.5}px; top:${this.ratioY * box.top - 12.5}px" @click="${ () => { this.box.splice(index, 1); this.requestUpdate()}}"/>
         <div class="rect" style="left:${this.ratioX * box.left}px; top:${this.ratioY * box.top}px; width:${this.ratioX * (box.right - box.left)}px; height:${this.ratioY * (box.bottom - box.top)}px"></div>
+        <img class="delete" src="images/delete.png" style="left:${this.ratioX * box.right - 12.5}px; top:${this.ratioY * box.top - 12.5}px" @click="${ () => { this.box.splice(index, 1); this.requestUpdate()}}"/>
         <div class="rect labelHolder" class="rect" style="left:${this.ratioX * box.left}px; top:${this.ratioY * box.bottom}px;width:${this.ratioX * (box.right - box.left)}px;">
           <div class="label">${box.name||""}</div>
           <input class="editor" type="text" @change="${(e) => {box.name = e.target.value; this.requestUpdate()}}" value="${box.name||""}">

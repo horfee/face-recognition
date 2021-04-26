@@ -34,7 +34,7 @@ export default {
   input: 'Face-Image.js',
   output: {
     file: 'face-image.bundled.js',
-    format: 'esm',
+    format: 'iife',
   },
   onwarn(warning) {
     if (warning.code !== 'THIS_IS_UNDEFINED') {
@@ -43,7 +43,7 @@ export default {
   },
   plugins: [
     minifyHTML(),
-    copy(copyConfig),
+    //copy(copyConfig),
     replace({'Reflect.decorate': 'undefined'}),
     resolve(),
     terser({

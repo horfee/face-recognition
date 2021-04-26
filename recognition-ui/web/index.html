@@ -1,253 +1,189 @@
 <html>
     <head>
-        <script src='./node_modules/file-drop-element/dist/filedrop.mjs' type='module'></script>
-        <script src='./Face-Image.js' type='module'></script>
+        <!--<script src='./index.js'></script>-->
+        <script src="face-image.bundled.js"></script>
+        <script src="filedrop.umd.js"></script>
 
         <script type="text/javascript">
 
-            function createUUID() {
-                // http://www.ietf.org/rfc/rfc4122.txt
-                var s = [];
-                var hexDigits = "0123456789abcdef";
-                for (var i = 0; i < 36; i++) {
-                    s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
-                }
-                s[14] = "4";  // bits 12-15 of the time_hi_and_version field to 0010
-                s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1);  // bits 6-7 of the clock_seq_hi_and_reserved to 01
-                s[8] = s[13] = s[18] = s[23] = "-";
+function createUUID() {
+    // http://www.ietf.org/rfc/rfc4122.txt
+    var s = [];
+    var hexDigits = "0123456789abcdef";
+    for (var i = 0; i < 36; i++) {
+        s[i] = hexDigits.substr(Math.floor(Math.random() * 0x10), 1);
+    }
+    s[14] = "4";  // bits 12-15 of the time_hi_and_version field to 0010
+    s[19] = hexDigits.substr((s[19] & 0x3) | 0x8, 1);  // bits 6-7 of the clock_seq_hi_and_reserved to 01
+    s[8] = s[13] = s[18] = s[23] = "-";
 
-                var uuid = s.join("");
-                return uuid;
-            }
+    var uuid = s.join("");
+    return uuid;
+}
 
-            function readImage(file) {
-                var p = new Promise( (resolve, reject) => {
-                    // Check if the file is an image.
-                    if (file.type && !file.type.startsWith('image/')) {
-                        console.log('File is not an image.', file.type, file);
-                        return;
-                    }
+function readImage(file) {
+    var p = new Promise( (resolve, reject) => {
+        // Check if the file is an image.
+        if (file.type && !file.type.startsWith('image/')) {
+            console.log('File is not an image.', file.type, file);
+            return;
+        }
 
-                    const reader = new FileReader();
-                    reader.addEventListener('load', (event) => {
-                        resolve(event.target.result);
-                    });
-                    reader.readAsDataURL(file);
+        const reader = new FileReader();
+        reader.addEventListener('load', (event) => {
+            resolve(event.target.result);
+        });
+        reader.readAsDataURL(file);
+    });
+    return p;
+    
+}
+
+function displayTraining(e) {
+    var scoring = document.getElementById("scoring");
+    var training = document.getElementById("training");
+    scoring.setAttribute("hidden", "");
+    training.removeAttribute("hidden");
+    e.currentTarget.setAttribute("selected", "");
+    if ( e.currentTarget.nextElementSibling )
+        e.currentTarget.nextElementSibling.removeAttribute("selected");
+    if ( e.currentTarget.previousElementSibling )
+        e.currentTarget.previousElementSibling.removeAttribute("selected");
+        
+        
+}
+
+function displayScoring(e) {
+    var scoring = document.getElementById("scoring");
+    var training = document.getElementById("training");
+    training.setAttribute("hidden", "");
+    scoring.removeAttribute("hidden");
+    e.currentTarget.setAttribute("selected", "");
+    if ( e.currentTarget.nextElementSibling )
+        e.currentTarget.nextElementSibling.removeAttribute("selected");
+    if ( e.currentTarget.previousElementSibling )
+        e.currentTarget.previousElementSibling.removeAttribute("selected");
+}
+
+window.addEventListener("load", () => {
+    var fileDrop = document.getElementById("file");
+    fileDrop.addEventListener("filedrop", (e) => {
+        e.files.forEach( (file) => {
+            
+            readImage(file).then( data => {
+                var faceImage = document.createElement("face-image");
+                faceImage.setAttribute("processing", "");
+                faceImage.image = data;
+                var formData = new FormData();
+                formData.append('file', file);
+                fetch('/faceslocation', {
+                    method: "POST",
+                    body: formData
+                })
+                .catch( err => alert("en error happened"))
+                .then( response => response.json())
+                .then( boxes => {
+                    faceImage.removeAttribute("processing");
+                    faceImage.box = boxes.map( box => {return {top: box[0], right: box[1], bottom:box[2], left:box[3]}});
                 });
-                return p;
-                
-            }
+                fileDrop.appendChild(faceImage);
+            });
+        });
+        
+    });
 
-            function displayTraining(e) {
-                var scoring = document.getElementById("scoring");
-                var training = document.getElementById("training");
-                scoring.setAttribute("hidden", "");
-                training.removeAttribute("hidden");
-                e.currentTarget.setAttribute("selected", "");
-                if ( e.currentTarget.nextElementSibling )
-                    e.currentTarget.nextElementSibling.removeAttribute("selected");
-                if ( e.currentTarget.previousElementSibling )
-                    e.currentTarget.previousElementSibling.removeAttribute("selected");
-                    
-                    
-            }
+    var button = document.getElementById("submitBtn");
+    button.addEventListener("click", (e) => {
+        button.disabled = true;
+        var allFaces = [...document.getElementById("file").querySelectorAll("face-image")];
+        var invalid = allFaces.some( (faceImage => faceImage.box.some( box => box.name === undefined || box.name === '')));
+        if ( invalid ) {
+            alert("Please fill all names or remove faces");
+            return;
+        }
 
-            function displayScoring(e) {
-                var scoring = document.getElementById("scoring");
-                var training = document.getElementById("training");
-                training.setAttribute("hidden", "");
-                scoring.removeAttribute("hidden");
-                e.currentTarget.setAttribute("selected", "");
-                if ( e.currentTarget.nextElementSibling )
-                    e.currentTarget.nextElementSibling.removeAttribute("selected");
-                if ( e.currentTarget.previousElementSibling )
-                    e.currentTarget.previousElementSibling.removeAttribute("selected");
-            }
+        if ( allFaces.length == 0 ) button.disabled = false;
+        var nbFaces = allFaces.reduce( (acc, faceImage) => acc += faceImage.box.length, 0);
 
-            window.addEventListener("load", () => {
-                var fileDrop = document.getElementById("file");
-                fileDrop.addEventListener("filedrop", (e) => {
-                    e.files.forEach( (file) => {
-                        
-                        readImage(file).then( data => {
-                            var faceImage = document.createElement("face-image");
-                            faceImage.setAttribute("processing", "");
-                            faceImage.image = data;
-                            var formData = new FormData();
-                            formData.append('file', file);
-                            fetch('/faceslocation', {
-                                method: "POST",
-                                body: formData
-                            }).then( response => response.json())
-                            .then( boxes => {
-                                faceImage.removeAttribute("processing");
-                                faceImage.box = boxes.map( box => {return {top: box[0], right: box[1], bottom:box[2], left:box[3]}});
-                            });
-                            fileDrop.appendChild(faceImage);
-                        });
+        allFaces.forEach( faceImage => {
+            faceImage.extractFaces().forEach( face => {
+                face.data.toBlob( (blob) => {
+                    var formData = new FormData();
+                    formData.append('file', blob, createUUID() + ".png");
+                    fetch('/faces?id=' + face.name, {
+                        method: "POST",
+                        body: formData
+                    }).then( response => response.text())
+                    .then( res => {
+                        console.log("Ok");
+                    }).catch( res => {
+                        alert("An error happened " + res);
+                    }).finally(() => {
+                        nbFaces--;
+                        if ( nbFaces == 0 ) {
+                            button.disabled = false;
+                        }
                     });
-                    
                 });
-
-                var button = document.getElementById("submitBtn");
-                button.addEventListener("click", (e) => {
-                    button.disabled = true;
-                    var allFaces = [...document.getElementById("file").querySelectorAll("face-image")];
-                    var invalid = allFaces.some( (faceImage => faceImage.box.some( box => box.name === undefined || box.name === '')));
-                    if ( invalid ) {
-                        alert("Please fill all names or remove faces");
-                        return;
-                    }
-
-                    if ( allFaces.length == 0 ) button.disabled = false;
-                    var nbFaces = allFaces.reduce( (acc, faceImage) => acc += faceImage.box.length, 0);
-
-                    allFaces.forEach( faceImage => {
-                        faceImage.extractFaces().forEach( face => {
-                            face.data.toBlob( (blob) => {
-                                var formData = new FormData();
-                                formData.append('file', blob, createUUID() + ".png");
-                                fetch('/faces?id=' + face.name, {
-                                    method: "POST",
-                                    body: formData
-                                }).then( response => response.json())
-                                .then( res => {
-                                    console.log("Ok");
-                                }).catch( res => {
-                                    alter("An error happened " + res);
-                                }).finally(() => {
-                                    nbFaces--;
-                                    if ( nbFaces == 0 ) {
-                                        button.disabled = false;
-                                    }
-                                });
-                            });
-                            
-                        });
-                    });
-
-                });
-
-                fileDrop = document.getElementById("file2");
-                fileDrop.addEventListener("filedrop", (e) => {
-                    e.files.forEach( (file) => {
-                        
-                        readImage(file).then( data => {
-                            var faceImage = document.createElement("face-image");
-                            faceImage.image = data;
-                            fileDrop.appendChild(faceImage);
-                        });
-                    });
-                    
-                });
-
-                button = document.getElementById("submitScoreBtn");
-                button.addEventListener("click", (e) => {
-                    button.disabled = true;
-                    var allFaces = [...document.getElementById("file2").querySelectorAll("face-image")];
-                    if ( allFaces.length == 0 ) button.disabled = false;
-                    var nbFaces = allFaces.length;
-
-                    allFaces.forEach( faceImage => {
-                        faceImage.getData().toBlob( (blob) => {
-                            var formData = new FormData();
-                            formData.append('file', blob, createUUID() + ".png");
-                            fetch('/identify', {
-                                method: "POST",
-                                body: formData
-                            }).then( response => response.json())
-                            .then( res => {
-                                const boxes = res.faces.map( res => {return { 
-                                    name: res.id, 
-                                    top: res.location[0],
-                                    right:res.location[1],
-                                    bottom: res.location[2],
-                                    left: res.location[3]
-                                }});
-                                faceImage.box = boxes;
-                                console.log("ok");
-                            }).catch( res => {
-                                alter("An error happened " + res);
-                            }).finally(() => {
-                                nbFaces--;
-                                if ( nbFaces == 0 ) {
-                                    button.disabled = false;
-                                }
-                            });
-                        });
-                    });
-
-                });
-
                 
             });
+        });
 
+    });
+
+    var fileDrop2 = document.getElementById("file2");
+    fileDrop2.addEventListener("filedrop", (e) => {
+        e.files.forEach( (file) => {
+            
+            readImage(file).then( data => {
+                var faceImage = document.createElement("face-image");
+                faceImage.image = data;
+                fileDrop2.appendChild(faceImage);
+            });
+        });
+        
+    });
+
+    var button2 = document.getElementById("submitScoreBtn");
+    button2.addEventListener("click", (e) => {
+        button2.disabled = true;
+        var allFaces = [...document.getElementById("file2").querySelectorAll("face-image")];
+        if ( allFaces.length == 0 ) button2.disabled = false;
+        var nbFaces = allFaces.length;
+
+        allFaces.forEach( faceImage => {
+            faceImage.getData().toBlob( (blob) => {
+                var formData = new FormData();
+                formData.append('file', blob, createUUID() + ".png");
+                fetch('/identify', {
+                    method: "POST",
+                    body: formData
+                }).then( response => response.json())
+                .then( res => {
+                    const boxes = res.faces.map( res => {return { 
+                        name: res.id, 
+                        top: res.location[0],
+                        right:res.location[1],
+                        bottom: res.location[2],
+                        left: res.location[3]
+                    }});
+                    faceImage.box = boxes;
+                }).catch( res => {
+                    alter("An error happened " + res);
+                }).finally(() => {
+                    nbFaces--;
+                    if ( nbFaces == 0 ) {
+                        button2.disabled = false;
+                    }
+                });
+            });
+        });
+
+    });
+});
         </script>
 
-        <style>
-            body {
-                padding: 25px;
-            }
-            file-drop {
-                min-width: 800px;
-                min-height: 200px;
-                flex-wrap: wrap;
-                display: flex;
-                padding: 5px;
-                border-radius: 5px;
-                border: 5px dashed lightgray;
-            }
-
-            [selected] li {
-                border: 1px solid red;
-                transition: transform 0.2s;
-                transform: scale(1.1);
-            }
-
-            .tab {
-                border: 1px solid lightgray;
-                background-color: antiquewhite;
-                padding: 50px;
-            }
-
-            [hidden] {
-                display: none;
-            }
-
-            ul {
-                display: flex;
-                margin: 0px;
-                padding: 0px;
-            }
-
-            li {
-                box-sizing: border-box;
-                display: block;
-                padding: 5px;
-                background: lightgray;
-                border: 1px solid lightgray;
-            }
-
-
-            #placeholder:only-child {
-                display: initial;
-            }
-
-            #placeholder {
-                display: none;
-                margin: auto;
-            }
-
-            body {
-                margin: auto;
-            }
-
-
-            .marged {
-                margin-top: 15px;
-            }
-            
-        </style>
+        <link href="styles.css" rel="stylesheet" type="text/css"/>
     </head>
     <body>
         <ul>
